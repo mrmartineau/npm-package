@@ -80,6 +80,25 @@ Before publishing a package created from this template:
 4. Run `npm run check`.
 5. Publish with your preferred workflow, for example `npm publish` or `npm run release`.
 
+## Agent Skill
+
+This repo includes an agent skill (`SKILL.md`) that teaches AI coding agents how to scaffold new npm packages using this template's conventions. Install it with [`npx skills`](https://github.com/vercel-labs/skills):
+
+```bash
+# Interactive — choose your agent(s) and scope
+npx skills add mrmartineau/npm-package
+
+# Install globally for a specific agent
+npx skills add mrmartineau/npm-package -g -a amp
+
+# Install globally for Claude Code
+npx skills add mrmartineau/npm-package -g -a claude-code
+```
+
+Once installed, your agent will automatically use this skill when asked to create or scaffold a new npm package.
+
+Supports **Amp**, **Claude Code**, **Cursor**, **Codex**, and [many more](https://github.com/vercel-labs/skills#supported-agents).
+
 ## Notes
 
 - The template targets Node.js 20+.

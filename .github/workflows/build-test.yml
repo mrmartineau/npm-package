@@ -1,4 +1,4 @@
-name: CI
+name: Build and Test
 
 on:
   pull_request:
@@ -30,4 +30,4 @@ jobs:
         run: bun run build
 
       - name: Run Tests
-        run: npm run test
+        run: bun test

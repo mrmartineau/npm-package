@@ -1,4 +1,4 @@
-# npm-package-base
+# zed-package-starter
 
 A starter template for building TypeScript npm packages with ESM + CJS dual output, Biome, Bun, and automated releases via semantic-release.
 

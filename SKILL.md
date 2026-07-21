@@ -1,22 +1,25 @@
 ---
 name: creating-npm-packages
-description: 'Scaffold new TypeScript npm packages with ESM + CJS dual output, Biome linting, Bun testing, tsdown bundling, semantic-release publishing, and GitHub Actions CI. Use when asked to create, scaffold, or set up a new npm package.'
+description: "Scaffold new TypeScript npm packages with ESM + CJS dual output, pnpm installs, Vite+ (vp) linting/formatting, Bun testing, tsdown bundling, semantic-release publishing, and GitHub Actions CI. Use when asked to create, scaffold, or set up a new npm package."
 ---
 
 # Creating npm Packages
 
 Scaffold production-ready TypeScript npm packages with a consistent stack:
-**Bun** (runtime/test), **tsdown** (bundler), **Biome** (lint/format), **semantic-release** (publishing), **GitHub Actions** (CI).
+**pnpm** (package manager), **Bun** (test runner), **tsdown** (bundler),
+**Vite+ / `vp`** (lint/format/typecheck + git hooks), **semantic-release**
+(publishing), **GitHub Actions** (CI).
 
 ## Workflow
 
 1. Create the project directory and initialise git
 2. Generate all config files using the templates below
-3. Replace placeholder values (`PACKAGE_NAME`, `PACKAGE_DESCRIPTION`, `GITHUB_OWNER`, `GITHUB_REPO`) with user-provided values
+3. Replace placeholder values (`PACKAGE_NAME`, `PACKAGE_DESCRIPTION`, `GITHUB_OWNER`, `GITHUB_REPO`, `CURRENT_YEAR`) with user-provided values
 4. Write initial source code in `src/index.ts` and a starter test in `src/index.test.ts`
-5. Run `bun install`
-6. Run `bun run build` to verify the setup works
-7. Run `bun test` to verify tests pass
+5. Run `pnpm install` (the `prepare` script runs `vp config`, which installs the pre-commit hook)
+6. Run `pnpm run build` to verify the setup works
+7. Run `pnpm run test` to verify tests pass
+8. Run `pnpm run check` to verify lint/format/typecheck passes
 
 ## Project Structure
 
@@ -24,18 +27,25 @@ Scaffold production-ready TypeScript npm packages with a consistent stack:
 .
 ├── .github/
 │   └── workflows/
-│       └── ci.yml
+│       ├── build-test.yml
+│       ├── release.yml
+│       └── security.yml
 ├── src/
 │   ├── index.ts
 │   └── index.test.ts
 ├── .gitignore
-├── biome.json
+├── CHANGELOG.md
 ├── LICENSE
 ├── package.json
 ├── README.md
 ├── release.config.mjs
-└── tsconfig.json
+├── tsconfig.json
+└── vite.config.ts
 ```
+
+`vp config` also generates a `.vite-hooks/` directory (pre-commit hook running
+`vp staged`) and sets `core.hooksPath` — the generated `_/` shim dir ignores
+itself; commit `.vite-hooks/pre-commit`.
 
 ## File Templates
 
@@ -48,9 +58,7 @@ Scaffold production-ready TypeScript npm packages with a consistent stack:
   "description": "PACKAGE_DESCRIPTION",
   "license": "ISC",
   "type": "module",
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "author": {
     "name": "Zander Martineau",
     "email": "zander@zander.wtf",
@@ -65,12 +73,17 @@ Scaffold production-ready TypeScript npm packages with a consistent stack:
     "url": "https://github.com/GITHUB_OWNER/GITHUB_REPO/issues"
   },
   "main": "./dist/index.cjs",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "publishConfig": {
@@ -79,60 +92,90 @@ Scaffold production-ready TypeScript npm packages with a consistent stack:
   "engines": {
     "node": ">=20.19.0"
   },
+  "packageManager": "pnpm@11.10.0",
   "scripts": {
     "build": "tsdown src/index.ts --format cjs,esm --target es2020 --dts --sourcemap --clean",
-    "check": "biome check --write .",
+    "check": "vp check --fix",
     "dev": "tsdown src/index.ts --format cjs,esm --target es2020 --dts --sourcemap --watch",
+    "prepare": "vp config",
     "release": "semantic-release",
     "test": "bun test"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.6",
+    "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^11.0.0",
     "@types/bun": "^1.3.10",
     "@types/node": "^25.4.0",
     "semantic-release": "^25.0.3",
     "tsdown": "^0.21.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite-plus": "^0.2.2"
   }
 }
 ```
 
 Key conventions:
+
 - Always set `"type": "module"` for ESM-first
-- Dual `exports` map with `types`, `import`, and `require` conditions
+- `exports` map with per-condition `types`: tsdown emits `index.mjs` /
+  `index.cjs` with matching `index.d.mts` / `index.d.cts` — never point at
+  `index.js` / `index.d.ts`, those files don't exist
 - `"files": ["dist"]` to publish only built output
 - `"publishConfig": { "access": "public" }` for scoped packages
 - Use `tsdown` (not tsup) for bundling
+
+### vite.config.ts
+
+Vite+ tooling config: pre-commit staged checks, formatter, and type-aware
+linting.
+
+```ts
+import { defineConfig } from "vite-plus";
+
+export default defineConfig({
+  staged: {
+    "*": "vp check --fix",
+  },
+  fmt: {},
+  lint: {
+    jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
+    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    options: { typeAware: true, typeCheck: true },
+  },
+});
+```
 
 ### release.config.mjs
 
 ```js
 export default {
-  branches: ['main'],
+  branches: ["main"],
   plugins: [
-    '@semantic-release/commit-analyzer',
-    '@semantic-release/release-notes-generator',
-    '@semantic-release/npm',
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/changelog",
+    "@semantic-release/npm",
     [
-      '@semantic-release/git',
+      "@semantic-release/git",
       {
-        assets: ['package.json'],
-        message:
-          'chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}',
+        assets: ["package.json", "CHANGELOG.md"],
+        message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}",
       },
     ],
     [
-      '@semantic-release/github',
+      "@semantic-release/github",
       {
         failComment: false,
         failTitle: false,
       },
     ],
   ],
-}
+};
 ```
+
+Create a `CHANGELOG.md` stub (`# Changelog` heading + one line saying notes are
+generated by semantic-release); releases prepend notes to it.
 
 ### tsconfig.json
 
@@ -145,6 +188,7 @@ export default {
     "allowJs": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
+    "types": ["bun"],
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "strict": true,
@@ -160,22 +204,13 @@ export default {
 }
 ```
 
-### biome.json
+`"types": ["bun"]` makes `bun:test` imports resolve for the type-aware `vp
+check`.
 
-```json
-{
-  "$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
-  "files": {
-    "ignoreUnknown": false,
-    "includes": ["**", "!dist"]
-  }
-}
-```
-
-### .github/workflows/ci.yml
+### .github/workflows/build-test.yml
 
 ```yaml
-name: CI
+name: Build and Test
 
 on:
   pull_request:
@@ -194,42 +229,94 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "pnpm"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        run: bun install
+        run: pnpm install --frozen-lockfile
 
       - name: Check
-        run: bun run check
+        run: pnpm run check
 
       - name: Build
-        run: bun run build
+        run: pnpm run build
 
       - name: Run Tests
-        run: bun test
+        run: pnpm run test
+```
 
+### .github/workflows/release.yml
+
+```yaml
+name: NPM Release
+
+on:
+  workflow_dispatch:
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
   release:
-    needs: ci
+    name: Release to NPM
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Release
+          fetch-depth: 0 # semantic-release needs full history
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: bun run release
+```
+
+### .github/workflows/security.yml
+
+```yaml
+name: Security
+
+on:
+  push:
+    branches: ["**"]
+
+jobs:
+  safe-chain:
+    name: Aikido safe-chain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "latest"
+          cache: "pnpm"
+      - name: Install safe-chain
+        run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 ```
 
 ### .gitignore
@@ -296,53 +383,56 @@ Write the actual package implementation here. If no specific functionality is re
 
 ```ts
 export interface HelloOptions {
-	punctuation?: string;
+  punctuation?: string;
 }
 
-export function hello(
-	name = "world",
-	{ punctuation = "!" }: HelloOptions = {},
-): string {
-	return `Hello, ${name}${punctuation}`;
+export function hello(name = "world", { punctuation = "!" }: HelloOptions = {}): string {
+  return `Hello, ${name}${punctuation}`;
 }
 ```
 
 ### src/index.test.ts (starter)
 
 ```ts
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from "bun:test";
 
-import { hello } from './index.js'
+import { hello } from "./index.js";
 
-describe('hello', () => {
-  test('returns a greeting with the provided name', () => {
-    expect(hello('Bun')).toBe('Hello, Bun!')
-  })
-})
+describe("hello", () => {
+  test("returns a greeting with the provided name", () => {
+    expect(hello("Bun")).toBe("Hello, Bun!");
+  });
+});
 ```
 
 ## Conventions
 
-- **Runtime**: Bun for installing, running, and testing
-- **Bundler**: tsdown (ESM + CJS dual output with `.js` and `.cjs` extensions)
-- **Linting/formatting**: Biome (not ESLint/Prettier)
+- **Package manager**: pnpm for installing and running scripts
+- **Bundler**: tsdown (ESM + CJS dual output: `.mjs` / `.cjs` with `.d.mts` / `.d.cts` types)
+- **Linting/formatting/typechecking**: Vite+ `vp check --fix` (not ESLint/Prettier/Biome), configured in `vite.config.ts`
+- **Git hooks**: `vp config` (via the `prepare` script) installs a pre-commit hook running `vp staged`
 - **Testing**: `bun:test` (not Jest or Vitest)
-- **Releasing**: semantic-release with conventional commits — releases are fully automated via CI
+- **Releasing**: semantic-release with conventional commits, changelog written to `CHANGELOG.md`
 - **Target**: ES2020 for broad compatibility, Node.js ≥ 20.19.0
 - **Strict TypeScript**: `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
 - **Imports**: Always use `.js` extension in relative imports (required by `verbatimModuleSyntax` + NodeNext)
 
 ## Release Conventions
 
-Releases are automated via `semantic-release` on every push to `main`. Version bumps are determined by conventional commit messages:
+Releases run from the manually-triggered `NPM Release` workflow (Actions → Run
+workflow). Version bumps are determined by conventional commit messages:
 
 - `fix:` → patch release
 - `feat:` → minor release
 - `feat!:` or `BREAKING CHANGE:` in footer → major release
 
-The CI `release` job requires two repository secrets:
+The release job requires two repository secrets:
+
 - `NPM_TOKEN` — npm publish token
 - `GITHUB_TOKEN` — automatically provided by GitHub Actions
+
+semantic-release commits the version bump and `CHANGELOG.md` back to `main`
+with `[skip ci]` — never hand-edit `version` in `package.json`.
 
 ## Multiple Entrypoints
 
@@ -352,14 +442,12 @@ If the package needs multiple entrypoints, update both the build command and the
 {
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": { "types": "./dist/index.d.mts", "default": "./dist/index.mjs" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
     },
     "./utils": {
-      "types": "./dist/utils.d.ts",
-      "import": "./dist/utils.js",
-      "require": "./dist/utils.cjs"
+      "import": { "types": "./dist/utils.d.mts", "default": "./dist/utils.mjs" },
+      "require": { "types": "./dist/utils.d.cts", "default": "./dist/utils.cjs" }
     }
   },
   "scripts": {
@@ -375,9 +463,10 @@ When the package needs runtime dependencies, add them to `dependencies` (not `de
 ## README Template
 
 Generate a README with:
+
 1. Package name as heading
 2. One-line description
-3. Install instructions (`bun add PACKAGE_NAME` / `npm install PACKAGE_NAME`)
+3. Install instructions (`pnpm add PACKAGE_NAME` / `npm install PACKAGE_NAME`)
 4. Usage example with import
 5. API documentation for exported functions/types
 6. License footer

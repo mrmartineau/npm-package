@@ -1,10 +1,7 @@
 export interface HelloOptions {
-	punctuation?: string;
+  punctuation?: string;
 }
 
-export function hello(
-	name = "world",
-	{ punctuation = "!" }: HelloOptions = {},
-): string {
-	return `Hello, ${name}${punctuation}`;
+export function hello(name = "world", { punctuation = "!" }: HelloOptions = {}): string {
+  return `Hello, ${name}${punctuation}`;
 }
